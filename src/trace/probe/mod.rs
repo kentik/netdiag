@@ -1,5 +1,6 @@
 pub use probe::Key;
 pub use probe::Probe;
+pub use probe::Probes;
 pub use probe::Protocol;
 pub use probe::PORT_MAX;
 pub use probe::PORT_MIN;

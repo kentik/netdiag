@@ -11,7 +11,7 @@ use super::probe::Probe;
 use super::reply::Echo;
 use super::state::State;
 
-pub async fn recv(state: Arc<State>) -> Result<()> {
+pub async fn recv(state: &Arc<State>) -> Result<()> {
     let ipv4 = Domain::ipv4();
     let ipv6 = Domain::ipv6();
 
@@ -36,8 +36,8 @@ async fn recv4(sock: RawSocket, state: Arc<State>) -> Result<()> {
             let icmp = IcmpV4Packet::try_from(tail)?;
 
             if let IcmpV4Packet::TimeExceeded(pkt) = icmp {
-                if let Ok(probe) = Probe::decode4(pkt) {
-                    if let Some(tx) = state.remove(&probe.key()) {
+                if let Ok(key) = Probe::decode4(pkt) {
+                    if let Some(tx) = state.sender(&key) {
                         let _ = tx.send(Echo(from.ip(), now, false));
                     }
                 }
@@ -50,8 +50,8 @@ async fn recv4(sock: RawSocket, state: Arc<State>) -> Result<()> {
                     icmp4::Unreachable::Other(_, pkt) => pkt,
                 };
 
-                if let Ok(probe) = Probe::decode4(pkt) {
-                    if let Some(tx) = state.remove(&probe.key()) {
+                if let Ok(key) = Probe::decode4(pkt) {
+                    if let Some(tx) = state.sender(&key) {
                         let _ = tx.send(Echo(from.ip(), now, true));
                     }
                 }
@@ -69,8 +69,8 @@ async fn recv6(sock: RawSocket, state: Arc<State>) -> Result<()> {
         let pkt = IcmpV6Packet::try_from(&pkt[..n])?;
 
         if let IcmpV6Packet::HopLimitExceeded(pkt) = pkt {
-            if let Ok(probe) = Probe::decode6(pkt) {
-                if let Some(tx) = state.remove(&probe.key()) {
+            if let Ok(key) = Probe::decode6(pkt) {
+                if let Some(tx) = state.sender(&key) {
                     let _ = tx.send(Echo(from.ip(), now, false));
                 }
             }
@@ -81,9 +81,9 @@ async fn recv6(sock: RawSocket, state: Arc<State>) -> Result<()> {
                 icmp6::Unreachable::Other(_, pkt) => pkt,
             };
 
-            if let Ok(probe) = Probe::decode6(pkt) {
-                if let Some(tx) = state.remove(&probe.key()) {
-                    let _ = tx.send(Echo(from.ip(), now, true));
+            if let Ok(key) = Probe::decode6(pkt) {
+                if let Some(tx) = state.sender(&key) {
+                    let _ = tx.send(Echo(from.ip(), now, false));
                 }
             }
         }

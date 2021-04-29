@@ -28,34 +28,38 @@ pub enum Protocol {
     UDP(u16),
 }
 
+#[derive(Debug)]
+pub struct Probes {
+    proto: Protocol,
+    src:   SocketAddr,
+    dst:   IpAddr,
+    value: u16,
+}
+
 pub const PORT_MIN: u16 = 33434;
 pub const PORT_MAX: u16 = 65407;
 
-#[derive(Debug, Hash, Eq, PartialEq)]
-pub struct Key(pub SocketAddr, pub SocketAddr);
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+pub enum Key {
+    TCP(SocketAddr, IpAddr),
+    UDP(SocketAddr, IpAddr),
+}
 
 impl Probe {
-    pub fn new(proto: Protocol, src: SocketAddr, dst: IpAddr) -> Result<Self> {
-        match proto {
-            Protocol::TCP(port) => Ok(Probe::TCP(TCP::try_from((src, dst, port))?)),
-            Protocol::UDP(port) => Ok(Probe::UDP(UDP::try_from((src, dst, port))?)),
-        }
-    }
-
-    pub fn decode4(pkt: &[u8]) -> Result<Probe> {
+    pub fn decode4(pkt: &[u8]) -> Result<Key> {
         let (head, tail) = Ipv4Header::read_from_slice(pkt)?;
         match head.protocol {
-            TCP   => TCPv4::decode(head, tail),
-            UDP   => UDPv4::decode(head, tail),
+            TCP   => Ok(TCPv4::decode(head, tail)?.key()),
+            UDP   => Ok(UDPv4::decode(head, tail)?.key()),
             other => Err(anyhow!("unsupported protocol: {}", other)),
         }
     }
 
-    pub fn decode6(pkt: &[u8]) -> Result<Probe> {
+    pub fn decode6(pkt: &[u8]) -> Result<Key> {
         let (head, tail) = Ipv6Header::read_from_slice(pkt)?;
         match head.next_header {
-            TCP   => TCPv6::decode(head, tail),
-            UDP   => UDPv6::decode(head, tail),
+            TCP   => Ok(TCPv6::decode(head, tail)?.key()),
+            UDP   => Ok(UDPv6::decode(head, tail)?.key()),
             other => Err(anyhow!("unsupported protocol: {}", other)),
         }
     }
@@ -71,19 +75,19 @@ impl Probe {
 
     pub fn dst(&self) -> SocketAddr {
         match self {
-            Self::TCP(TCP::V4(tcp)) => SocketAddr::V4(tcp.dst),
-            Self::TCP(TCP::V6(tcp)) => SocketAddr::V6(tcp.dst),
-            Self::UDP(UDP::V4(udp)) => SocketAddr::V4(udp.dst),
-            Self::UDP(UDP::V6(udp)) => SocketAddr::V6(udp.dst),
+            Self::TCP(TCP::V4(tcp)) => tcp.dst.into(),
+            Self::TCP(TCP::V6(tcp)) => tcp.dst.into(),
+            Self::UDP(UDP::V4(udp)) => udp.dst.into(),
+            Self::UDP(UDP::V6(udp)) => udp.dst.into(),
         }
     }
 
     pub fn key(&self) -> Key {
         match self {
-            Self::UDP(UDP::V4(v4)) => Key(SocketAddr::V4(v4.src), SocketAddr::V4(v4.dst)),
-            Self::UDP(UDP::V6(v6)) => Key(SocketAddr::V6(v6.src), SocketAddr::V6(v6.dst)),
-            Self::TCP(TCP::V4(v4)) => Key(SocketAddr::V4(v4.src), SocketAddr::V4(v4.dst)),
-            Self::TCP(TCP::V6(v6)) => Key(SocketAddr::V6(v6.src), SocketAddr::V6(v6.dst)),
+            Self::TCP(TCP::V4(v4)) => Key::TCP(v4.src.into(), IpAddr::from(*v4.dst.ip())),
+            Self::TCP(TCP::V6(v6)) => Key::TCP(v6.src.into(), IpAddr::from(*v6.dst.ip())),
+            Self::UDP(UDP::V4(v4)) => Key::UDP(v4.src.into(), IpAddr::from(*v4.dst.ip())),
+            Self::UDP(UDP::V6(v6)) => Key::UDP(v6.src.into(), IpAddr::from(*v6.dst.ip())),
         }
     }
 
@@ -94,6 +98,32 @@ impl Probe {
             Self::UDP(UDP::V4(v4)) => v4.increment(),
             Self::UDP(UDP::V6(v6)) => v6.increment(),
         }
+    }
+}
+
+impl Probes {
+    pub fn new(proto: Protocol, src: IpAddr, dst: IpAddr, value: u16) -> Self {
+        let src = match proto {
+            Protocol::TCP(..) => SocketAddr::new(src, value),
+            Protocol::UDP(..) => SocketAddr::new(src, value),
+        };
+        Self { proto, src, dst, value }
+    }
+
+    pub fn key(&self) -> Key {
+        let Self { proto, src, dst, .. } = *self;
+        match proto {
+            Protocol::TCP(..) => Key::TCP(src, dst),
+            Protocol::UDP(..) => Key::UDP(src, dst),
+        }
+    }
+
+    pub fn probe(&self) -> Result<Probe> {
+        let Self { proto, src, dst, .. } = *self;
+        Ok(match proto {
+            Protocol::TCP(port) => Probe::TCP(TCP::try_from((src, dst, port))?),
+            Protocol::UDP(port) => Probe::UDP(UDP::try_from((src, dst, port))?),
+        })
     }
 }
 

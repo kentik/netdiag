@@ -100,12 +100,12 @@ async fn recv(sock: Arc<RawSocket>, state: Arc<State>) -> Result<()> {
         });
 
         if let (Ok((head, _tail)), Some(dst)) = (pkt, dst) {
-            let src = SocketAddr::new(src.ip(), head.source_port);
+            let src = src.ip();
             let dst = SocketAddr::new(dst, head.destination_port);
-            let key = Key(dst, src);
+            let key = Key::TCP(dst, src);
 
-            if let Some(tx) = state.remove(&key) {
-                let _ = tx.send(Echo(src.ip(), now, true));
+            if let Some(tx) = state.sender(&key) {
+                let _ = tx.send(Echo(src, now, true));
             }
         }
     }

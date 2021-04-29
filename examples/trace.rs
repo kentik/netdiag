@@ -1,11 +1,12 @@
 use std::collections::HashMap;
-use std::net::{IpAddr, SocketAddr};
+use std::net::IpAddr;
 use std::time::Duration;
 use anyhow::{anyhow, Result};
+use futures::{pin_mut, StreamExt};
 use gumdrop::Options;
-use tokio::net::{lookup_host, UdpSocket};
+use tokio::net::lookup_host;
 use tokio::time::sleep;
-use netdiag::{Bind, Protocol, Tracer, trace::{Probe, Node}};
+use netdiag::{Bind, Protocol, Tracer, trace::Node};
 
 #[derive(Debug, Options)]
 pub struct Args {
@@ -13,7 +14,7 @@ pub struct Args {
     #[options(default = "UDP")] proto:  String,
     #[options()]                port:   u16,
     #[options(default = "4")]   count:  usize,
-    #[options(default = "30")]  limit:  usize,
+    #[options(default = "30")]  limit:  u8,
     #[options(default = "500")] delay:  u64,
     #[options(default = "250")] expiry: u64,
     #[options(free, required)]  host:   String,
@@ -41,27 +42,27 @@ async fn main() -> Result<()> {
     println!("tracing {} ({})", host, addr);
 
     let bind = Bind::default();
-    let src  = source(&bind, addr).await?;
 
     let tracer = Tracer::new(&bind).await?;
+    let source = tracer.reserve(proto, addr).await?;
 
-    let mut done = false;
-    let mut ttl  = 1;
+    let mut done  = false;
+    let mut ttl   = 1;
+    let mut probe = source.probe()?;
 
     while !done && ttl <= limit {
         let mut nodes = HashMap::<IpAddr, Vec<String>>::new();
-        let mut probe = Probe::new(proto, src, addr)?;
 
-        for _ in 0..count {
-            let node = tracer.probe(&probe, ttl as u8, expiry).await?;
+        let stream = tracer.probe(&mut probe, ttl, expiry);
+        let stream = stream.take(count);
+        pin_mut!(stream);
 
+        while let Some(Ok(node)) = stream.next().await {
             if let Node::Node(_, ip, rtt, last) = node {
                 let rtt = format!("{:>0.2?}", rtt);
                 nodes.entry(ip).or_default().push(rtt);
                 done = last || ip == addr;
             }
-
-            probe.increment();
 
             sleep(delay).await;
         }
@@ -74,7 +75,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn print(nodes: &HashMap<IpAddr, Vec<String>>, ttl: usize, probes: usize) {
+fn print(nodes: &HashMap<IpAddr, Vec<String>>, ttl: u8, probes: usize) {
     let mut count = 0;
 
     let mut output = nodes.iter().map(|(node, rtt)| {
@@ -96,15 +97,4 @@ fn print(nodes: &HashMap<IpAddr, Vec<String>>, ttl: usize, probes: usize) {
             _ => println!("[{:>3}] {:32} {}", "",  node, rtt),
         }
     }
-}
-
-async fn source(bind: &Bind, dst: IpAddr) -> Result<SocketAddr> {
-    let sock = match dst {
-        IpAddr::V4(_) => UdpSocket::bind(bind.sa4()),
-        IpAddr::V6(_) => UdpSocket::bind(bind.sa6()),
-    }.await?;
-
-    sock.connect(SocketAddr::new(dst, 1234)).await?;
-
-    Ok(sock.local_addr()?)
 }

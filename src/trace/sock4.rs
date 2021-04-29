@@ -86,11 +86,10 @@ async fn recv(sock: Arc<RawSocket>, state: Arc<State>) -> Result<()> {
             let dst = IpAddr::V4(ip.destination.into());
 
             let pkt = TcpHeaderSlice::from_slice(&tail)?;
-            let src = SocketAddr::new(src, pkt.source_port());
             let dst = SocketAddr::new(dst, pkt.destination_port());
-            let key = Key(dst, src);
+            let key = Key::TCP(dst, src);
 
-            if let Some(tx) = state.remove(&key) {
+            if let Some(tx) = state.sender(&key) {
                 let _ = tx.send(Echo(from.ip(), now, true));
             }
         }
