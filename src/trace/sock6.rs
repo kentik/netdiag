@@ -15,13 +15,14 @@ use super::reply::Echo;
 use super::state::State;
 
 pub struct Sock6 {
+    icmp:  Mutex<Arc<RawSocket>>,
     tcp:   Mutex<Arc<RawSocket>>,
     udp:   Mutex<Arc<RawSocket>>,
     route: Mutex<UdpSocket>,
 }
 
 impl Sock6 {
-    pub async fn new(bind: &Bind, state: Arc<State>) -> Result<Self> {
+    pub async fn new(bind: &Bind, icmp: Arc<RawSocket>, state: Arc<State>) -> Result<Self> {
         let ipv6  = Domain::ipv6();
         let tcp   = Protocol::tcp();
         let udp   = Protocol::udp();
@@ -49,6 +50,7 @@ impl Sock6 {
         });
 
         Ok(Self {
+            icmp:  Mutex::new(icmp),
             tcp:   Mutex::new(tcp),
             udp:   Mutex::new(udp),
             route: Mutex::new(route),
@@ -68,8 +70,9 @@ impl Sock6 {
         let data = &[IoSlice::new(pkt)];
 
         match probe {
-            Probe::TCP(..) => self.tcp.lock().await,
-            Probe::UDP(..) => self.udp.lock().await,
+            Probe::ICMP(..) => self.icmp.lock().await,
+            Probe::TCP(..)  => self.tcp.lock().await,
+            Probe::UDP(..)  => self.udp.lock().await,
         }.send_msg(&dst, data, Some(&ctl)).await?;
 
         Ok(Instant::now())

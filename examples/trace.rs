@@ -26,6 +26,7 @@ async fn main() -> Result<()> {
     let Args { proto, port, count, limit, delay, expiry, host, .. } = args;
 
     let proto = match proto.to_uppercase().as_str() {
+        "ICMP"            => Protocol::ICMP,
         "TCP" if port > 0 => Protocol::TCP(port),
         "UDP" if port > 0 => Protocol::UDP(port),
         _                 => Protocol::default(),

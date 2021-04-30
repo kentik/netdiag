@@ -7,7 +7,7 @@ use futures::{Stream, StreamExt, TryStreamExt};
 use futures::stream::try_unfold;
 use tokio::time::timeout;
 use crate::Bind;
-use super::probe::{Probe, Protocol, TCP, UDP};
+use super::probe::{Probe, Protocol, ICMP, TCP, UDP};
 use super::reply::{Echo, Node};
 use super::{sock4::Sock4, sock6::Sock6};
 use super::state::{Lease, State};
@@ -32,9 +32,9 @@ impl Tracer {
     pub async fn new(bind: &Bind) -> Result<Self> {
         let state = Arc::new(State::new());
 
-        icmp::recv(&state).await?;
-        let sock4 = Sock4::new(bind, state.clone()).await?;
-        let sock6 = Sock6::new(bind, state.clone()).await?;
+        let (icmp4, icmp6) = icmp::exec(bind, &state).await?;
+        let sock4 = Sock4::new(bind, icmp4, state.clone()).await?;
+        let sock6 = Sock6::new(bind, icmp6, state.clone()).await?;
 
         Ok(Self { sock4, sock6, state })
     }
@@ -104,10 +104,12 @@ impl Tracer {
 
     async fn send(&self, probe: &Probe, ttl: u8) -> Result<Instant> {
         match probe {
-            Probe::TCP(TCP::V4(_)) => self.sock4.send(probe, ttl).await,
-            Probe::TCP(TCP::V6(_)) => self.sock6.send(probe, ttl).await,
-            Probe::UDP(UDP::V4(_)) => self.sock4.send(probe, ttl).await,
-            Probe::UDP(UDP::V6(_)) => self.sock6.send(probe, ttl).await,
+            Probe::ICMP(ICMP::V4(_)) => self.sock4.send(probe, ttl).await,
+            Probe::ICMP(ICMP::V6(_)) => self.sock6.send(probe, ttl).await,
+            Probe::TCP(TCP::V4(_))   => self.sock4.send(probe, ttl).await,
+            Probe::TCP(TCP::V6(_))   => self.sock6.send(probe, ttl).await,
+            Probe::UDP(UDP::V4(_))   => self.sock4.send(probe, ttl).await,
+            Probe::UDP(UDP::V6(_))   => self.sock6.send(probe, ttl).await,
         }
     }
 

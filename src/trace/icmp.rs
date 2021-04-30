@@ -1,30 +1,42 @@
 use std::convert::TryFrom;
 use std::future::Future;
+use std::io::IoSliceMut;
 use std::sync::Arc;
 use std::time::Instant;
 use anyhow::Result;
 use etherparse::{IpTrafficClass, Ipv4Header};
+use libc::c_int;
 use log::{debug, error};
 use raw_socket::tokio::prelude::*;
+use crate::Bind;
 use crate::icmp::{icmp4, icmp6, IcmpV4Packet, IcmpV6Packet};
-use super::probe::Probe;
+use super::probe::{Key, Probe};
 use super::reply::Echo;
 use super::state::State;
 
-pub async fn recv(state: &Arc<State>) -> Result<()> {
-    let ipv4 = Domain::ipv4();
-    let ipv6 = Domain::ipv6();
+pub async fn exec(bind: &Bind, state: &Arc<State>) -> Result<(Arc<RawSocket>, Arc<RawSocket>)> {
+    let ipv4  = Domain::ipv4();
+    let ipv6  = Domain::ipv6();
+    let icmp4 = Protocol::icmpv4();
+    let icmp6 = Protocol::icmpv6();
 
-    let icmp4 = RawSocket::new(ipv4, Type::raw(), Some(Protocol::icmpv4()))?;
-    let icmp6 = RawSocket::new(ipv6, Type::raw(), Some(Protocol::icmpv6()))?;
+    let icmp4 = Arc::new(RawSocket::new(ipv4, Type::raw(), Some(icmp4))?);
+    let icmp6 = Arc::new(RawSocket::new(ipv6, Type::raw(), Some(icmp6))?);
 
-    spawn("recv4", recv4(icmp4, state.clone()));
-    spawn("recv6", recv6(icmp6, state.clone()));
+    icmp4.bind(bind.sa4()).await?;
+    icmp6.bind(bind.sa6()).await?;
 
-    Ok(())
+    let enable: c_int = 1;
+    icmp4.set_sockopt(Level::IPV4, Name::IPV4_HDRINCL,     &enable)?;
+    icmp6.set_sockopt(Level::IPV6, Name::IPV6_RECVPKTINFO, &enable)?;
+
+    spawn("recv4", recv4(icmp4.clone(), state.clone()));
+    spawn("recv6", recv6(icmp6.clone(), state.clone()));
+
+    Ok((icmp4, icmp6))
 }
 
-async fn recv4(sock: RawSocket, state: Arc<State>) -> Result<()> {
+async fn recv4(sock: Arc<RawSocket>, state: Arc<State>) -> Result<()> {
     let mut pkt = [0u8; 128];
     loop {
         let (n, from) = sock.recv_from(&mut pkt).await?;
@@ -32,7 +44,7 @@ async fn recv4(sock: RawSocket, state: Arc<State>) -> Result<()> {
         let now = Instant::now();
         let pkt = Ipv4Header::read_from_slice(&pkt[..n])?;
 
-        if let (Ipv4Header { protocol: ICMP, .. }, tail) = pkt {
+        if let (ip @ Ipv4Header { protocol: ICMP, .. }, tail) = pkt {
             let icmp = IcmpV4Packet::try_from(tail)?;
 
             if let IcmpV4Packet::TimeExceeded(pkt) = icmp {
@@ -55,15 +67,26 @@ async fn recv4(sock: RawSocket, state: Arc<State>) -> Result<()> {
                         let _ = tx.send(Echo(from.ip(), now, true));
                     }
                 }
+            } else if let IcmpV4Packet::EchoReply(echo) = icmp {
+                let src = ip.source.into();
+                let dst = ip.destination.into();
+                let key = Key::ICMP(dst, src, echo.id);
+
+                if let Some(tx) = state.sender(&key) {
+                    let _ = tx.send(Echo(from.ip(), now, true));
+                }
             }
         }
     }
 }
 
-async fn recv6(sock: RawSocket, state: Arc<State>) -> Result<()> {
+async fn recv6(sock: Arc<RawSocket>, state: Arc<State>) -> Result<()> {
     let mut pkt = [0u8; 64];
+    let mut ctl = [0u8; 64];
+
     loop {
-        let (n, from) = sock.recv_from(&mut pkt).await?;
+        let iovec = &[IoSliceMut::new(&mut pkt)];
+        let (n, from) = sock.recv_msg(iovec, Some(&mut ctl)).await?;
 
         let now = Instant::now();
         let pkt = IcmpV6Packet::try_from(&pkt[..n])?;
@@ -84,6 +107,22 @@ async fn recv6(sock: RawSocket, state: Arc<State>) -> Result<()> {
             if let Ok(key) = Probe::decode6(pkt) {
                 if let Some(tx) = state.sender(&key) {
                     let _ = tx.send(Echo(from.ip(), now, false));
+                }
+            }
+        } else if let IcmpV6Packet::EchoReply(echo) = pkt {
+            let dst = CMsg::decode(&ctl).find_map(|msg| {
+                match msg {
+                    CMsg::Ipv6PktInfo(info) => Some(info.addr()),
+                    _                       => None,
+                }
+            });
+
+            if let Some(dst) = dst {
+                let dst = dst.into();
+                let key = Key::ICMP(dst, from.ip(), echo.id);
+
+                if let Some(tx) = state.sender(&key) {
+                    let _ = tx.send(Echo(from.ip(), now, true));
                 }
             }
         }

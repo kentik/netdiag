@@ -14,13 +14,14 @@ use super::reply::Echo;
 use super::state::State;
 
 pub struct Sock4 {
+    icmp:  Mutex<Arc<RawSocket>>,
     tcp:   Mutex<Arc<RawSocket>>,
     udp:   Mutex<Arc<RawSocket>>,
     route: Mutex<UdpSocket>,
 }
 
 impl Sock4 {
-    pub async fn new(bind: &Bind, state: Arc<State>) -> Result<Self> {
+    pub async fn new(bind: &Bind, icmp: Arc<RawSocket>, state: Arc<State>) -> Result<Self> {
         let ipv4  = Domain::ipv4();
         let tcp   = Protocol::from(IPPROTO_TCP);
         let udp   = Protocol::from(IPPROTO_UDP);
@@ -46,6 +47,7 @@ impl Sock4 {
         });
 
         Ok(Self {
+            icmp:  Mutex::new(icmp),
             tcp:   Mutex::new(tcp),
             udp:   Mutex::new(udp),
             route: Mutex::new(route),
@@ -59,8 +61,9 @@ impl Sock4 {
         let dst = probe.dst();
 
         match probe {
-            Probe::TCP(..) => self.tcp.lock().await,
-            Probe::UDP(..) => self.udp.lock().await,
+            Probe::ICMP(..) => self.icmp.lock().await,
+            Probe::TCP(..)  => self.tcp.lock().await,
+            Probe::UDP(..)  => self.udp.lock().await,
         }.send_to(&pkt, &dst).await?;
 
         Ok(Instant::now())
