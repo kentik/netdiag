@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 use std::net::{IpAddr, SocketAddr};
 use std::time::Instant;
 use std::sync::Arc;
@@ -59,6 +60,12 @@ impl Sock4 {
 
         let pkt = probe.encode(&mut pkt, ttl)?;
         let dst = probe.dst();
+
+        if cfg!(target_os = "macos") {
+            let len = u16::try_from(pkt.len())?;
+            pkt[2..4].copy_from_slice(&len.to_ne_bytes());
+            pkt[6..8].copy_from_slice(&0u16.to_ne_bytes());
+        }
 
         match probe {
             Probe::ICMP(..) => self.icmp.lock().await,

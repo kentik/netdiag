@@ -75,7 +75,7 @@ impl Probe {
         }
     }
 
-    pub fn encode<'a>(&self, buf: &'a mut [u8], ttl: u8) -> Result<&'a [u8]> {
+    pub fn encode<'a>(&self, buf: &'a mut [u8], ttl: u8) -> Result<&'a mut [u8]> {
         match self {
             Self::ICMP(ICMP::V4(v4)) => v4.encode(buf, ttl),
             Self::ICMP(ICMP::V6(v6)) => v6.encode(buf),

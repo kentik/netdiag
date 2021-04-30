@@ -32,7 +32,7 @@ impl UDPv4 {
         Ok(Probe::from(UDPv4 { src, dst }))
     }
 
-    pub fn encode<'a>(&self, buf: &'a mut [u8], ttl: u8) -> Result<&'a [u8]> {
+    pub fn encode<'a>(&self, buf: &'a mut [u8], ttl: u8) -> Result<&'a mut [u8]> {
         let mut buf = Cursor::new(buf);
 
         let src = self.src.ip().octets();
@@ -44,7 +44,7 @@ impl UDPv4 {
         let n = pkt.size(0);
         pkt.write(&mut buf, &[])?;
 
-        Ok(&buf.into_inner()[..n])
+        Ok(&mut buf.into_inner()[..n])
     }
 
     pub fn increment(&mut self) {
@@ -68,7 +68,7 @@ impl UDPv6 {
         Ok(Probe::from(UDPv6 { src, dst }))
     }
 
-    pub fn encode<'a>(&self, buf: &'a mut [u8]) -> Result<&'a [u8]> {
+    pub fn encode<'a>(&self, buf: &'a mut [u8]) -> Result<&'a mut [u8]> {
         let mut buf = Cursor::new(buf);
 
         let src = self.src.port();
@@ -78,7 +78,7 @@ impl UDPv6 {
         pkt.write(&mut buf)?;
         let n = buf.position() as usize;
 
-        Ok(&buf.into_inner()[..n])
+        Ok(&mut buf.into_inner()[..n])
     }
 
     pub fn increment(&mut self) {

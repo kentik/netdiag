@@ -41,7 +41,7 @@ impl ICMPv4 {
         Ok(Probe::from(ICMPv4 { src, dst, id, seq }))
     }
 
-    pub fn encode<'a>(&self, buf: &'a mut [u8], ttl: u8) -> Result<&'a [u8]> {
+    pub fn encode<'a>(&self, buf: &'a mut [u8], ttl: u8) -> Result<&'a mut [u8]> {
         let mut buf = Cursor::new(buf);
 
         let src = self.src.octets();
@@ -63,7 +63,7 @@ impl ICMPv4 {
 
         let n = usize::try_from(buf.position())?;
 
-        Ok(&buf.into_inner()[..n])
+        Ok(&mut buf.into_inner()[..n])
     }
 
     pub fn key(&self) -> Key {
@@ -96,7 +96,7 @@ impl ICMPv6 {
         Ok(Probe::from(ICMPv6 { src, dst, id, seq }))
     }
 
-    pub fn encode<'a>(&self, buf: &'a mut [u8]) -> Result<&'a [u8]> {
+    pub fn encode<'a>(&self, buf: &'a mut [u8]) -> Result<&'a mut [u8]> {
         let mut buf = Cursor::new(buf);
 
         let mut pkt = [0u8; icmp6::HEADER_SIZE];
@@ -108,7 +108,7 @@ impl ICMPv6 {
 
         let n = usize::try_from(buf.position())?;
 
-        Ok(&buf.into_inner()[..n])
+        Ok(&mut buf.into_inner()[..n])
     }
 
     pub fn key(&self) -> Key {
