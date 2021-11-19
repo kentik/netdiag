@@ -1,6 +1,7 @@
 #![allow(clippy::module_inception, clippy::redundant_field_names)]
 
 pub use bind::Bind;
+pub use route::RouteSocket;
 
 pub use knock::Knock;
 pub use knock::Knocker;
@@ -19,3 +20,4 @@ pub mod ping;
 pub mod trace;
 
 mod bind;
+mod route;

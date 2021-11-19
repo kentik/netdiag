@@ -7,9 +7,8 @@ use etherparse::TcpHeader;
 use libc::c_int;
 use log::{debug, error};
 use raw_socket::tokio::prelude::*;
-use tokio::net::UdpSocket;
 use tokio::sync::Mutex;
-use crate::Bind;
+use crate::{Bind, RouteSocket};
 use super::probe::{Key, Probe};
 use super::reply::Echo;
 use super::state::State;
@@ -18,7 +17,7 @@ pub struct Sock6 {
     icmp:  Mutex<Arc<RawSocket>>,
     tcp:   Mutex<Arc<RawSocket>>,
     udp:   Mutex<Arc<RawSocket>>,
-    route: Mutex<UdpSocket>,
+    route: Mutex<RouteSocket>,
 }
 
 impl Sock6 {
@@ -29,7 +28,7 @@ impl Sock6 {
 
         let tcp   = Arc::new(RawSocket::new(ipv6, Type::raw(), Some(tcp))?);
         let udp   = Arc::new(RawSocket::new(ipv6, Type::raw(), Some(udp))?);
-        let route = UdpSocket::bind(bind.sa6()).await?;
+        let route = RouteSocket::new(bind.sa6()).await?;
 
         let offset: c_int = 16;
         let enable: c_int = 1;
@@ -79,9 +78,8 @@ impl Sock6 {
     }
 
     pub async fn source(&self, dst: IpAddr) -> Result<IpAddr> {
-        let route = self.route.lock().await;
-        route.connect(SocketAddr::new(dst, 1234)).await?;
-        Ok(route.local_addr()?.ip())
+        let mut route = self.route.lock().await;
+        route.source(SocketAddr::new(dst, 1234)).await
     }
 }
 

@@ -7,9 +7,8 @@ use etherparse::{Ipv4Header, IpTrafficClass, TcpHeaderSlice};
 use libc::{IPPROTO_TCP, IPPROTO_UDP, c_int};
 use log::{debug, error};
 use raw_socket::tokio::prelude::*;
-use tokio::net::UdpSocket;
 use tokio::sync::Mutex;
-use crate::Bind;
+use crate::{Bind, RouteSocket};
 use super::probe::{Key, Probe};
 use super::reply::Echo;
 use super::state::State;
@@ -18,7 +17,7 @@ pub struct Sock4 {
     icmp:  Mutex<Arc<RawSocket>>,
     tcp:   Mutex<Arc<RawSocket>>,
     udp:   Mutex<Arc<RawSocket>>,
-    route: Mutex<UdpSocket>,
+    route: Mutex<RouteSocket>,
 }
 
 impl Sock4 {
@@ -29,7 +28,7 @@ impl Sock4 {
 
         let tcp   = Arc::new(RawSocket::new(ipv4, Type::raw(), Some(tcp))?);
         let udp   = Arc::new(RawSocket::new(ipv4, Type::raw(), Some(udp))?);
-        let route = UdpSocket::bind(bind.sa4()).await?;
+        let route = RouteSocket::new(bind.sa4()).await?;
 
         tcp.bind(bind.sa4()).await?;
         udp.bind(bind.sa4()).await?;
@@ -77,9 +76,8 @@ impl Sock4 {
     }
 
     pub async fn source(&self, dst: IpAddr) -> Result<IpAddr> {
-        let route = self.route.lock().await;
-        route.connect(SocketAddr::new(dst, 1234)).await?;
-        Ok(route.local_addr()?.ip())
+        let mut route = self.route.lock().await;
+        route.source(SocketAddr::new(dst, 1234)).await
     }
 }
 
