@@ -1,28 +1,33 @@
-use std::io::IoSliceMut;
-use std::net::{IpAddr, SocketAddr};
-use std::time::Instant;
-use std::sync::Arc;
+use super::state::State;
+use super::{probe::ProbeV6, reply::Reply};
+use crate::{Bind, RouteSocket};
 use anyhow::Result;
 use etherparse::TcpHeader;
-use libc::{IPPROTO_TCP, c_int};
+use libc::{c_int, IPPROTO_TCP};
 use log::{debug, error};
 use raw_socket::tokio::prelude::*;
+use std::io::IoSliceMut;
+use std::net::{IpAddr, SocketAddr};
+use std::sync::Arc;
+use std::time::Instant;
+use tokio::sync::broadcast;
 use tokio::sync::Mutex;
-use crate::{Bind, RouteSocket};
-use super::{probe::ProbeV6, reply::Reply};
-use super::state::State;
 
 pub struct Sock6 {
-    sock:  Mutex<Arc<RawSocket>>,
+    sock: Mutex<Arc<RawSocket>>,
     route: Mutex<RouteSocket>,
 }
 
 impl Sock6 {
-    pub async fn new(bind: &Bind, state: Arc<State>) -> Result<Self> {
+    pub async fn new(
+        bind: &Bind,
+        state: Arc<State>,
+        shutdown: broadcast::Receiver<()>,
+    ) -> Result<Self> {
         let ipv6 = Domain::ipv6();
-        let tcp  = Protocol::from(IPPROTO_TCP);
+        let tcp = Protocol::from(IPPROTO_TCP);
 
-        let sock  = Arc::new(RawSocket::new(ipv6, Type::raw(), Some(tcp))?);
+        let sock = Arc::new(RawSocket::new(ipv6, Type::raw(), Some(tcp))?);
         let route = RouteSocket::new(bind.sa6()).await?;
 
         sock.bind(bind.sa6()).await?;
@@ -34,14 +39,14 @@ impl Sock6 {
         let rx = sock.clone();
 
         tokio::spawn(async move {
-            match recv(rx, state).await {
+            match recv(rx, state, shutdown).await {
                 Ok(()) => debug!("recv finished"),
                 Err(e) => error!("recv failed: {}", e),
             }
         });
 
         Ok(Self {
-            sock:  Mutex::new(sock),
+            sock: Mutex::new(sock),
             route: Mutex::new(route),
         })
     }
@@ -55,7 +60,7 @@ impl Sock6 {
         let dst = SocketAddr::V6(dst);
 
         let sock = self.sock.lock().await;
-        sock.send_to(&pkt, &dst).await?;
+        sock.send_to(pkt, &dst).await?;
 
         Ok(Instant::now())
     }
@@ -66,33 +71,43 @@ impl Sock6 {
     }
 }
 
-async fn recv(sock: Arc<RawSocket>, state: Arc<State>) -> Result<()> {
+async fn recv(
+    sock: Arc<RawSocket>,
+    state: Arc<State>,
+    mut shutdown: broadcast::Receiver<()>,
+) -> Result<()> {
     let mut pkt = [0u8; 64];
     let mut ctl = [0u8; 64];
 
     loop {
         let iovec = &[IoSliceMut::new(&mut pkt)];
-        let (n, src) = sock.recv_msg(iovec, Some(&mut ctl)).await?;
 
-        let now = Instant::now();
-        let pkt = TcpHeader::read_from_slice(&pkt[..n]);
-        let dst = CMsg::decode(&ctl).find_map(|msg| {
-            match msg {
-                CMsg::Ipv6PktInfo(info) => Some(info.addr().into()),
-                _                       => None,
-            }
-        });
+        tokio::select! {
+            result = sock.recv_msg(iovec, Some(&mut ctl)) => {
+                let (n, src) = result?;
 
-        if let (Ok((head, _tail)), Some(dst)) = (pkt, dst) {
-            let src = SocketAddr::new(src.ip(), head.source_port);
-            let dst = SocketAddr::new(dst, head.destination_port);
+                let now = Instant::now();
+                let pkt = TcpHeader::from_slice(&pkt[..n]);
+                let dst = CMsg::decode(&ctl).find_map(|msg| match msg {
+                    CMsg::Ipv6PktInfo(info) => Some(info.addr().into()),
+                    _ => None,
+                });
 
-            if let Some(tx) = state.sender(dst, src) {
-                match tx.send(Reply::new(head, now)).await {
-                    Ok(()) => (),
-                    Err(_) => (),
+                if let (Ok((head, _tail)), Some(dst)) = (pkt, dst) {
+                    let src = SocketAddr::new(src.ip(), head.source_port);
+                    let dst = SocketAddr::new(dst, head.destination_port);
+
+                    if let Some(tx) = state.sender(dst, src) {
+                        if let Err(e) = tx.send(Reply::new(head, now)).await {
+                            error!("{}", e);
+                        }
+                    }
                 }
+            }
+            _ = shutdown.recv() => {
+                break;
             }
         }
     }
+    Ok(())
 }

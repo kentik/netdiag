@@ -1,27 +1,32 @@
-use std::net::{IpAddr, SocketAddr};
-use std::time::Instant;
-use std::sync::Arc;
+use super::state::State;
+use super::{probe::ProbeV4, reply::Reply};
+use crate::{Bind, RouteSocket};
 use anyhow::Result;
-use etherparse::{Ipv4Header, IpTrafficClass, TcpHeader};
-use libc::{IPPROTO_TCP, c_int};
+use etherparse::{IpNumber, Ipv4Header, TcpHeader};
+use libc::{c_int, IPPROTO_TCP};
 use log::{debug, error};
 use raw_socket::tokio::prelude::*;
+use std::net::{IpAddr, SocketAddr};
+use std::sync::Arc;
+use std::time::Instant;
+use tokio::sync::broadcast;
 use tokio::sync::Mutex;
-use crate::{Bind, RouteSocket};
-use super::{probe::ProbeV4, reply::Reply};
-use super::state::State;
 
 pub struct Sock4 {
-    sock:  Mutex<Arc<RawSocket>>,
+    sock: Mutex<Arc<RawSocket>>,
     route: Mutex<RouteSocket>,
 }
 
 impl Sock4 {
-    pub async fn new(bind: &Bind, state: Arc<State>) -> Result<Self> {
+    pub async fn new(
+        bind: &Bind,
+        state: Arc<State>,
+        shutdown: broadcast::Receiver<()>,
+    ) -> Result<Self> {
         let ipv4 = Domain::ipv4();
-        let tcp  = Protocol::from(IPPROTO_TCP);
+        let tcp = Protocol::from(IPPROTO_TCP);
 
-        let sock  = Arc::new(RawSocket::new(ipv4, Type::raw(), Some(tcp))?);
+        let sock = Arc::new(RawSocket::new(ipv4, Type::raw(), Some(tcp))?);
         let route = RouteSocket::new(bind.sa4()).await?;
 
         sock.bind(bind.sa4()).await?;
@@ -31,14 +36,14 @@ impl Sock4 {
         let rx = sock.clone();
 
         tokio::spawn(async move {
-            match recv(rx, state).await {
+            match recv(rx, state, shutdown).await {
                 Ok(()) => debug!("recv finished"),
                 Err(e) => error!("recv failed: {}", e),
             }
         });
 
         Ok(Self {
-            sock:  Mutex::new(sock),
+            sock: Mutex::new(sock),
             route: Mutex::new(route),
         })
     }
@@ -50,7 +55,7 @@ impl Sock4 {
         let dst = SocketAddr::V4(probe.dst);
 
         let sock = self.sock.lock().await;
-        sock.send_to(&pkt, &dst).await?;
+        sock.send_to(pkt, &dst).await?;
 
         Ok(Instant::now())
     }
@@ -61,28 +66,48 @@ impl Sock4 {
     }
 }
 
-async fn recv(sock: Arc<RawSocket>, state: Arc<State>) -> Result<()> {
+async fn recv(
+    sock: Arc<RawSocket>,
+    state: Arc<State>,
+    mut shutdown: broadcast::Receiver<()>,
+) -> Result<()> {
     let mut pkt = [0u8; 128];
     loop {
-        let (n, _from) = sock.recv_from(&mut pkt).await?;
+        tokio::select! {
+            result = sock.recv_from(&mut pkt) => {
+                let (n, _from) = result?;
 
-        let now = Instant::now();
-        let pkt = Ipv4Header::read_from_slice(&pkt[..n])?;
+                let now = Instant::now();
+                let pkt = Ipv4Header::from_slice(&pkt[..n])?;
 
-        if let (Ipv4Header { protocol: TCP, source: src, destination: dst, .. }, tail) = pkt {
-            let (head, _tail) = TcpHeader::read_from_slice(tail)?;
+                if let (
+                    Ipv4Header {
+                        protocol: TCP,
+                        source: src,
+                        destination: dst,
+                        ..
+                    },
+                    tail,
+                ) = pkt
+                {
+                    let (head, _tail) = TcpHeader::from_slice(tail)?;
 
-            let src = SocketAddr::new(IpAddr::from(src), head.source_port);
-            let dst = SocketAddr::new(IpAddr::from(dst), head.destination_port);
+                    let src = SocketAddr::new(IpAddr::from(src), head.source_port);
+                    let dst = SocketAddr::new(IpAddr::from(dst), head.destination_port);
 
-            if let Some(tx) = state.sender(dst, src) {
-                match tx.send(Reply::new(head, now)).await {
-                    Ok(()) => (),
-                    Err(_) => (),
+                    if let Some(tx) = state.sender(dst, src) {
+                        if let Err(e) = tx.send(Reply::new(head, now)).await {
+                            error!("{}", e);
+                        }
+                    }
                 }
+            }
+            _ = shutdown.recv() => {
+                break;
             }
         }
     }
+    Ok(())
 }
 
-const TCP: u8 = IpTrafficClass::Tcp as u8;
+const TCP: u8 = IpNumber::Tcp as u8;

@@ -1,16 +1,16 @@
+use super::{Key, Probe};
+use crate::icmp::{icmp4, icmp6};
+use anyhow::{anyhow, Result};
+use etherparse::*;
 use std::convert::{TryFrom, TryInto};
 use std::io::{Cursor, Write};
 use std::net::{Ipv4Addr, Ipv6Addr};
-use anyhow::{Result, anyhow};
-use etherparse::*;
-use crate::icmp::{icmp4, icmp6};
-use super::{Key, Probe};
 
 #[derive(Debug)]
 pub struct ICMPv4 {
     pub src: Ipv4Addr,
     pub dst: Ipv4Addr,
-    pub id:  u16,
+    pub id: u16,
     pub seq: u16,
 }
 
@@ -18,7 +18,7 @@ pub struct ICMPv4 {
 pub struct ICMPv6 {
     pub src: Ipv6Addr,
     pub dst: Ipv6Addr,
-    pub id:  u16,
+    pub id: u16,
     pub seq: u16,
 }
 
@@ -35,7 +35,7 @@ impl ICMPv4 {
             return Err(anyhow!("short buffer"));
         }
 
-        let id  = u16::from_be_bytes(tail[4..6].try_into()?);
+        let id = u16::from_be_bytes(tail[4..6].try_into()?);
         let seq = u16::from_be_bytes(tail[6..8].try_into()?);
 
         Ok(Probe::from(ICMPv4 { src, dst, id, seq }))
@@ -48,7 +48,7 @@ impl ICMPv4 {
         let dst = self.dst.octets();
         let len = u16::try_from(icmp4::HEADER_SIZE)?;
 
-        let pkt = Ipv4Header::new(len, ttl, IpTrafficClass::Icmp, src, dst);
+        let pkt = Ipv4Header::new(len, ttl, IpNumber::Icmp, src, dst);
         pkt.write(&mut buf)?;
 
         let mut pkt = [0u8; icmp4::HEADER_SIZE];
@@ -90,7 +90,7 @@ impl ICMPv6 {
             return Err(anyhow!("short buffer"));
         }
 
-        let id  = u16::from_be_bytes(tail[4..6].try_into()?);
+        let id = u16::from_be_bytes(tail[4..6].try_into()?);
         let seq = u16::from_be_bytes(tail[6..8].try_into()?);
 
         Ok(Probe::from(ICMPv6 { src, dst, id, seq }))
