@@ -7,11 +7,11 @@ use futures::{Stream, StreamExt, TryStreamExt};
 use futures::stream::try_unfold;
 use tokio::time::timeout;
 use crate::Bind;
+use super::icmp::Icmp;
 use super::probe::{Probe, Protocol, ICMP, TCP, UDP};
 use super::reply::{Echo, Node};
 use super::{sock4::Sock4, sock6::Sock6};
 use super::state::{Lease, State};
-use super::icmp;
 
 #[derive(Debug)]
 pub struct Trace {
@@ -23,6 +23,7 @@ pub struct Trace {
 }
 
 pub struct Tracer {
+    icmp:  Icmp,
     sock4: Sock4,
     sock6: Sock6,
     state: Arc<State>,
@@ -32,11 +33,11 @@ impl Tracer {
     pub async fn new(bind: &Bind) -> Result<Self> {
         let state = Arc::new(State::new());
 
-        let (icmp4, icmp6) = icmp::exec(bind, &state).await?;
-        let sock4 = Sock4::new(bind, icmp4, state.clone()).await?;
-        let sock6 = Sock6::new(bind, icmp6, state.clone()).await?;
+        let icmp  = Icmp::exec(bind, &state).await?;
+        let sock4 = Sock4::new(bind, icmp.icmp4.clone(), state.clone()).await?;
+        let sock6 = Sock6::new(bind, icmp.icmp6.clone(), state.clone()).await?;
 
-        Ok(Self { sock4, sock6, state })
+        Ok(Self { icmp, sock4, sock6, state })
     }
 
     pub async fn route(&self, trace: Trace) -> Result<Vec<Vec<Node>>> {
@@ -122,5 +123,12 @@ impl Tracer {
             IpAddr::V4(..) => self.sock4.source(dst).await,
             IpAddr::V6(..) => self.sock6.source(dst).await,
         }
+    }
+}
+
+impl Drop for Tracer {
+    fn drop(&mut self) {
+        self.icmp.recv4.abort();
+        self.icmp.recv6.abort();
     }
 }

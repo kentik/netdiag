@@ -7,12 +7,14 @@ use libc::{IPPROTO_TCP, c_int};
 use log::{debug, error};
 use raw_socket::tokio::prelude::*;
 use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 use crate::{Bind, RouteSocket};
 use super::{probe::ProbeV4, reply::Reply};
 use super::state::State;
 
 pub struct Sock4 {
     sock:  Mutex<Arc<RawSocket>>,
+    recv:  JoinHandle<()>,
     route: Mutex<RouteSocket>,
 }
 
@@ -30,7 +32,7 @@ impl Sock4 {
         sock.set_sockopt(Level::IPV4, Name::IPV4_HDRINCL, &enable)?;
         let rx = sock.clone();
 
-        tokio::spawn(async move {
+        let recv = tokio::spawn(async move {
             match recv(rx, state).await {
                 Ok(()) => debug!("recv finished"),
                 Err(e) => error!("recv failed: {}", e),
@@ -39,6 +41,7 @@ impl Sock4 {
 
         Ok(Self {
             sock:  Mutex::new(sock),
+            recv:  recv,
             route: Mutex::new(route),
         })
     }
@@ -82,6 +85,12 @@ async fn recv(sock: Arc<RawSocket>, state: Arc<State>) -> Result<()> {
                 }
             }
         }
+    }
+}
+
+impl Drop for Sock4 {
+    fn drop(&mut self) {
+        self.recv.abort();
     }
 }
 

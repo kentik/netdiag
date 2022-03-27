@@ -7,12 +7,14 @@ use log::{debug, error};
 use raw_socket::{Domain, Type, Protocol};
 use raw_socket::tokio::RawSocket;
 use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 use crate::Bind;
 use crate::icmp::IcmpV6Packet;
 use super::probe::Probe;
 use super::state::State;
 
 pub struct Sock6 {
+    recv: JoinHandle<()>,
     sock: Mutex<Arc<RawSocket>>
 }
 
@@ -25,14 +27,14 @@ impl Sock6 {
         sock.bind(bind.sa6()).await?;
         let rx = sock.clone();
 
-        tokio::spawn(async move {
+        let recv = tokio::spawn(async move {
             match recv(rx, state).await {
                 Ok(()) => debug!("recv finished"),
                 Err(e) => error!("recv failed: {}", e),
             }
         });
 
-        Ok(Self { sock: Mutex::new(sock) })
+        Ok(Self { recv, sock: Mutex::new(sock) })
     }
 
     pub async fn send(&self, probe: &Probe) -> Result<Instant> {
@@ -62,5 +64,11 @@ async fn recv(sock: Arc<RawSocket>, state: Arc<State>) -> Result<()> {
                 }
             }
         }
+    }
+}
+
+impl Drop for Sock6 {
+    fn drop(&mut self) {
+        self.recv.abort();
     }
 }
