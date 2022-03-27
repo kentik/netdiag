@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 use anyhow::Result;
-use etherparse::{Ipv4Header, IpTrafficClass};
+use etherparse::{IpNumber, Ipv4Header};
 use log::{debug, error};
 use raw_socket::{Domain, Type, Protocol};
 use raw_socket::tokio::RawSocket;
@@ -60,7 +60,7 @@ async fn recv(sock: Arc<RawSocket>, state: Arc<State>) -> Result<()> {
         let (n, _) = sock.recv_from(&mut pkt).await?;
 
         let now = Instant::now();
-        let pkt = Ipv4Header::read_from_slice(&pkt[..n])?;
+        let pkt = Ipv4Header::from_slice(&pkt[..n])?;
 
         if let (Ipv4Header { protocol: ICMP4, .. }, tail) = pkt {
             if let IcmpV4Packet::EchoReply(echo) = IcmpV4Packet::try_from(tail)? {
@@ -80,4 +80,4 @@ impl Drop for Sock4 {
     }
 }
 
-const ICMP4: u8 = IpTrafficClass::Icmp as u8;
+const ICMP4: u8 = IpNumber::Icmp as u8;

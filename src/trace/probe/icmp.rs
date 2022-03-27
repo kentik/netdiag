@@ -48,7 +48,7 @@ impl ICMPv4 {
         let dst = self.dst.octets();
         let len = u16::try_from(icmp4::HEADER_SIZE)?;
 
-        let pkt = Ipv4Header::new(len, ttl, IpTrafficClass::Icmp, src, dst);
+        let pkt = Ipv4Header::new(len, ttl, IpNumber::Icmp, src, dst);
         pkt.write(&mut buf)?;
 
         let mut pkt = [0u8; icmp4::HEADER_SIZE];

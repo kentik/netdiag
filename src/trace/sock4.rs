@@ -3,7 +3,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::time::Instant;
 use std::sync::Arc;
 use anyhow::Result;
-use etherparse::{Ipv4Header, IpTrafficClass, TcpHeaderSlice};
+use etherparse::{IpNumber, Ipv4Header, TcpHeaderSlice};
 use libc::{IPPROTO_TCP, IPPROTO_UDP, c_int};
 use log::{debug, error};
 use raw_socket::tokio::prelude::*;
@@ -87,7 +87,7 @@ async fn recv(sock: Arc<RawSocket>, state: Arc<State>) -> Result<()> {
         let (n, from) = sock.recv_from(&mut pkt).await?;
 
         let now = Instant::now();
-        let pkt = Ipv4Header::read_from_slice(&pkt[..n])?;
+        let pkt = Ipv4Header::from_slice(&pkt[..n])?;
 
         if let (ip @ Ipv4Header { protocol: TCP, .. }, tail) = pkt {
             let src = IpAddr::V4(ip.source.into());
@@ -104,4 +104,4 @@ async fn recv(sock: Arc<RawSocket>, state: Arc<State>) -> Result<()> {
     }
 }
 
-const TCP: u8 = IpTrafficClass::Tcp as u8;
+const TCP: u8 = IpNumber::Tcp as u8;

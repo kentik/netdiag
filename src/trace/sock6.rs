@@ -92,7 +92,7 @@ async fn recv(sock: Arc<RawSocket>, state: Arc<State>) -> Result<()> {
         let (n, src) = sock.recv_msg(iovec, Some(&mut ctl)).await?;
 
         let now = Instant::now();
-        let pkt = TcpHeader::read_from_slice(&pkt[..n]);
+        let pkt = TcpHeader::from_slice(&pkt[..n]);
         let dst = CMsg::decode(&ctl).find_map(|msg| {
             match msg {
                 CMsg::Ipv6PktInfo(info) => Some(info.addr().into()),

@@ -2,7 +2,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::time::Instant;
 use std::sync::Arc;
 use anyhow::Result;
-use etherparse::{Ipv4Header, IpTrafficClass, TcpHeader};
+use etherparse::{IpNumber, Ipv4Header, TcpHeader};
 use libc::{IPPROTO_TCP, c_int};
 use log::{debug, error};
 use raw_socket::tokio::prelude::*;
@@ -70,10 +70,10 @@ async fn recv(sock: Arc<RawSocket>, state: Arc<State>) -> Result<()> {
         let (n, _from) = sock.recv_from(&mut pkt).await?;
 
         let now = Instant::now();
-        let pkt = Ipv4Header::read_from_slice(&pkt[..n])?;
+        let pkt = Ipv4Header::from_slice(&pkt[..n])?;
 
         if let (Ipv4Header { protocol: TCP, source: src, destination: dst, .. }, tail) = pkt {
-            let (head, _tail) = TcpHeader::read_from_slice(tail)?;
+            let (head, _tail) = TcpHeader::from_slice(tail)?;
 
             let src = SocketAddr::new(IpAddr::from(src), head.source_port);
             let dst = SocketAddr::new(IpAddr::from(dst), head.destination_port);
@@ -94,4 +94,4 @@ impl Drop for Sock4 {
     }
 }
 
-const TCP: u8 = IpTrafficClass::Tcp as u8;
+const TCP: u8 = IpNumber::Tcp as u8;

@@ -4,7 +4,7 @@ use std::io::IoSliceMut;
 use std::sync::Arc;
 use std::time::Instant;
 use anyhow::Result;
-use etherparse::{IpTrafficClass, Ipv4Header};
+use etherparse::{IpNumber, Ipv4Header};
 use libc::c_int;
 use log::{debug, error};
 use raw_socket::tokio::prelude::*;
@@ -52,7 +52,7 @@ async fn recv4(sock: Arc<RawSocket>, state: Arc<State>) -> Result<()> {
         let (n, from) = sock.recv_from(&mut pkt).await?;
 
         let now = Instant::now();
-        let pkt = Ipv4Header::read_from_slice(&pkt[..n])?;
+        let pkt = Ipv4Header::from_slice(&pkt[..n])?;
 
         if let (ip @ Ipv4Header { protocol: ICMP, .. }, tail) = pkt {
             let icmp = IcmpV4Packet::try_from(tail)?;
@@ -148,4 +148,4 @@ fn spawn<F: Future<Output = Result<()>> + Send + 'static>(name: &'static str, fu
     })
 }
 
-const ICMP: u8 = IpTrafficClass::Icmp as u8;
+const ICMP: u8 = IpNumber::Icmp as u8;

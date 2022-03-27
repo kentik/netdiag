@@ -1,7 +1,7 @@
 use std::convert::TryFrom;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use anyhow::{anyhow, Error, Result};
-use etherparse::{IpTrafficClass, Ipv4Header, Ipv6Header};
+use etherparse::{IpNumber, Ipv4Header, Ipv6Header};
 use super::{ICMPv4, ICMPv6, TCPv4, TCPv6, UDPv4, UDPv6};
 
 #[derive(Debug)]
@@ -56,7 +56,7 @@ pub enum Key {
 
 impl Probe {
     pub fn decode4(pkt: &[u8]) -> Result<Key> {
-        let (head, tail) = Ipv4Header::read_from_slice(pkt)?;
+        let (head, tail) = Ipv4Header::from_slice(pkt)?;
         match head.protocol {
             ICMP4 => Ok(ICMPv4::decode(head, tail)?.key()),
             TCP   => Ok(TCPv4::decode(head, tail)?.key()),
@@ -66,7 +66,7 @@ impl Probe {
     }
 
     pub fn decode6(pkt: &[u8]) -> Result<Key> {
-        let (head, tail) = Ipv6Header::read_from_slice(pkt)?;
+        let (head, tail) = Ipv6Header::from_slice(pkt)?;
         match head.next_header {
             ICMP6 => Ok(ICMPv6::decode(head, tail)?.key()),
             TCP   => Ok(TCPv6::decode(head, tail)?.key()),
@@ -239,7 +239,7 @@ fn invalid() -> Error {
     anyhow!("mixed IPv4 and IPv6 addresses")
 }
 
-const ICMP4: u8 = IpTrafficClass::Icmp     as u8;
-const ICMP6: u8 = IpTrafficClass::IPv6Icmp as u8;
-const TCP:   u8 = IpTrafficClass::Tcp      as u8;
-const UDP:   u8 = IpTrafficClass::Udp      as u8;
+const ICMP4: u8 = IpNumber::Icmp     as u8;
+const ICMP6: u8 = IpNumber::IPv6Icmp as u8;
+const TCP:   u8 = IpNumber::Tcp      as u8;
+const UDP:   u8 = IpNumber::Udp      as u8;
