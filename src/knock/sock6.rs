@@ -58,7 +58,7 @@ impl Sock6 {
         let dst = SocketAddr::V6(dst);
 
         let sock = self.sock.lock().await;
-        sock.send_to(&pkt, &dst).await?;
+        sock.send_to(pkt, &dst).await?;
 
         Ok(Instant::now())
     }

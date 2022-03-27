@@ -70,7 +70,7 @@ impl Sock4 {
             Probe::ICMP(..) => self.icmp.lock().await,
             Probe::TCP(..)  => self.tcp.lock().await,
             Probe::UDP(..)  => self.udp.lock().await,
-        }.send_to(&pkt, &dst).await?;
+        }.send_to(pkt, &dst).await?;
 
         Ok(Instant::now())
     }
@@ -93,7 +93,7 @@ async fn recv(sock: Arc<RawSocket>, state: Arc<State>) -> Result<()> {
             let src = IpAddr::V4(ip.source.into());
             let dst = IpAddr::V4(ip.destination.into());
 
-            let pkt = TcpHeaderSlice::from_slice(&tail)?;
+            let pkt = TcpHeaderSlice::from_slice(tail)?;
             let dst = SocketAddr::new(dst, pkt.destination_port());
             let key = Key::TCP(dst, src);
 

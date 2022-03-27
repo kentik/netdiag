@@ -43,12 +43,12 @@ impl Sock4 {
         let mut pkt = [0u8; 64];
 
         let pkt = probe.encode(&mut pkt)?;
-        let cksum = checksum(&pkt).to_be_bytes();
+        let cksum = checksum(pkt).to_be_bytes();
         pkt[2..4].copy_from_slice(&cksum);
 
         let addr = SocketAddr::new(probe.addr, 0);
         let sock = self.sock.lock().await;
-        sock.send_to(&pkt, &addr).await?;
+        sock.send_to(pkt, &addr).await?;
 
         Ok(Instant::now())
     }

@@ -53,7 +53,7 @@ impl Sock4 {
         let dst = SocketAddr::V4(probe.dst);
 
         let sock = self.sock.lock().await;
-        sock.send_to(&pkt, &dst).await?;
+        sock.send_to(pkt, &dst).await?;
 
         Ok(Instant::now())
     }

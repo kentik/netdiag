@@ -72,7 +72,7 @@ impl Sock6 {
             Probe::ICMP(..) => self.icmp.lock().await,
             Probe::TCP(..)  => self.tcp.lock().await,
             Probe::UDP(..)  => self.udp.lock().await,
-        }.send_msg(&dst, data, Some(&ctl)).await?;
+        }.send_msg(&dst, data, Some(ctl)).await?;
 
         Ok(Instant::now())
     }

@@ -25,7 +25,7 @@ impl UDPv4 {
         let src = Ipv4Addr::from(ip.source);
         let dst = Ipv4Addr::from(ip.destination);
 
-        let pkt = UdpHeaderSlice::from_slice(&tail)?;
+        let pkt = UdpHeaderSlice::from_slice(tail)?;
         let src = SocketAddrV4::new(src, pkt.source_port());
         let dst = SocketAddrV4::new(dst, pkt.destination_port());
 
@@ -61,7 +61,7 @@ impl UDPv6 {
         let src = Ipv6Addr::from(ip.source);
         let dst = Ipv6Addr::from(ip.destination);
 
-        let pkt = UdpHeaderSlice::from_slice(&tail)?;
+        let pkt = UdpHeaderSlice::from_slice(tail)?;
         let src = SocketAddrV6::new(src, pkt.source_port(), 0, 0);
         let dst = SocketAddrV6::new(dst, pkt.destination_port(), 0, 0);
 

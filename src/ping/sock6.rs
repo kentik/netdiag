@@ -43,7 +43,7 @@ impl Sock6 {
         let pkt  = probe.encode(&mut pkt)?;
         let addr = SocketAddr::new(probe.addr, 0);
         let sock = self.sock.lock().await;
-        sock.send_to(&pkt, &addr).await?;
+        sock.send_to(pkt, &addr).await?;
 
         Ok(Instant::now())
     }
