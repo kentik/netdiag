@@ -20,6 +20,8 @@ async fn main() -> Result<()> {
     let args = Args::parse_args_default_or_exit();
     let Args { count, delay, expiry, host, .. } = args;
 
+    env_logger::init();
+
     let delay  = Duration::from_millis(delay);
     let expiry = Duration::from_millis(expiry);
 

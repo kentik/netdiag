@@ -25,6 +25,8 @@ async fn main() -> Result<()> {
     let args = Args::parse_args_default_or_exit();
     let Args { proto, port, count, limit, delay, expiry, host, .. } = args;
 
+    env_logger::init();
+
     let proto = match proto.to_uppercase().as_str() {
         "ICMP"            => Protocol::ICMP,
         "TCP" if port > 0 => Protocol::TCP(port),
