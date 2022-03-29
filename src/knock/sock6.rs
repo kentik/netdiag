@@ -90,11 +90,8 @@ async fn recv(sock: Arc<RawSocket>, state: Arc<State>) -> Result<()> {
             let src = SocketAddr::new(src.ip(), head.source_port);
             let dst = SocketAddr::new(dst, head.destination_port);
 
-            if let Some(tx) = state.sender(dst, src) {
-                match tx.send(Reply::new(head, now)).await {
-                    Ok(()) => (),
-                    Err(_) => (),
-                }
+            if let Some(tx) = state.remove(dst, src) {
+                let _ = tx.send(Reply::new(head, now));
             }
         }
     }

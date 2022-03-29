@@ -36,20 +36,6 @@ impl Probe {
         }
     }
 
-    pub fn src(&self) -> SocketAddr {
-        match self {
-            Self::V4(v4) => SocketAddr::V4(v4.src),
-            Self::V6(v6) => SocketAddr::V6(v6.src),
-        }
-    }
-
-    pub fn dst(&self) -> SocketAddr {
-        match self {
-            Self::V4(v4) => SocketAddr::V4(v4.dst),
-            Self::V6(v6) => SocketAddr::V6(v6.dst),
-        }
-    }
-
     pub fn seq(&self) -> u32 {
         match self {
             Self::V4(v4) => v4.seq,

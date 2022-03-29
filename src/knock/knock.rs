@@ -5,12 +5,11 @@ use anyhow::Result;
 use futures::{Stream, StreamExt};
 use futures::stream::try_unfold;
 use rand::prelude::*;
-use tokio::sync::mpsc::Receiver;
 use tokio::time::timeout;
 use crate::Bind;
 use super::{probe::Probe, reply::Reply};
 use super::{sock4::Sock4, sock6::Sock6};
-use super::state::State;
+use super::state::{Lease, State};
 
 #[derive(Debug)]
 pub struct Knock {
@@ -41,24 +40,24 @@ impl Knocker {
 
         let dst = SocketAddr::new(addr, port);
         let src = self.source(addr, port).await?;
-        let (src, rx) = self.state.reserve(src, dst).await;
 
-        Ok(try_unfold((src, rx), move |(src, mut rx)| async move {
+        Ok(try_unfold((), move |()| async move {
+            let lease = self.state.reserve(src, dst).await;
             let seq   = random();
-            let probe = Probe::new(*src, dst, seq)?;
-            let rtt   = self.probe(&probe, &mut rx, expiry).await?;
-            Ok(Some((rtt, (src, rx))))
+            let probe = Probe::new(lease.src(), dst, seq)?;
+            let rtt   = self.probe(&probe, lease, expiry).await?;
+            Ok(Some((rtt, ())))
         }).take(count))
     }
 
-    async fn probe(&self, probe: &Probe, rx: &mut Receiver<Reply>, expiry: Duration) -> Result<Option<Duration>> {
+    async fn probe(&self, probe: &Probe, mut lease: Lease<'_>, expiry: Duration) -> Result<Option<Duration>> {
         let mut retries = 1;
 
         while retries > 0 {
             let sent  = self.send(probe).await?;
-            let reply = timeout(expiry, rx.recv());
+            let reply = timeout(expiry, &mut lease);
 
-            if let Ok(Some(Reply { head, when })) = reply.await {
+            if let Ok(Ok(Reply { head, when })) = reply.await {
                 if head.syn && head.ack {
                     if head.acknowledgment_number == probe.seq() + 1 {
                         return Ok(Some(when.saturating_duration_since(sent)))
