@@ -58,10 +58,8 @@ impl Knocker {
             let reply = timeout(expiry, &mut lease);
 
             if let Ok(Ok(Reply { head, when })) = reply.await {
-                if head.syn && head.ack {
-                    if head.acknowledgment_number == probe.seq() + 1 {
-                        return Ok(Some(when.saturating_duration_since(sent)))
-                    }
+                if head.syn && head.ack && head.acknowledgment_number == probe.seq() + 1 {
+                    return Ok(Some(when.saturating_duration_since(sent)))
                 }
             }
 

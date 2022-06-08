@@ -5,21 +5,24 @@ use anyhow::{anyhow, Result};
 use rand::random;
 use crate::icmp::{icmp4, icmp6};
 
+pub(crate) const TOKEN_SIZE: usize = 16;
+
 #[derive(Debug)]
 pub struct Probe {
     pub addr:  IpAddr,
     pub id:    u16,
     pub seq:   u16,
+    pub size:  usize,
     pub token: Token,
 }
 
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
-pub struct Token([u8; 16]);
+pub struct Token([u8; TOKEN_SIZE]);
 
 impl Probe {
-    pub fn new(addr: IpAddr, id: u16, seq: u16) -> Self {
+    pub fn new(addr: IpAddr, id: u16, seq: u16, size: usize) -> Self {
         let token = Token(random());
-        Self { addr, id, seq, token }
+        Self { addr, id, seq, size, token }
     }
 
     pub fn encode<'a>(&self, buf: &'a mut [u8]) -> Result<&'a mut [u8]> {
@@ -40,7 +43,7 @@ impl Probe {
         buf[6..8].copy_from_slice(&self.seq.to_be_bytes());
         buf[8..n].copy_from_slice(&self.token.0);
 
-        Ok(&mut buf[0..n])
+        Ok(&mut buf[..])
     }
 }
 

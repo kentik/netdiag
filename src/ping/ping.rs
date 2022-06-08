@@ -16,6 +16,7 @@ pub struct Ping {
     pub addr:   IpAddr,
     pub count:  usize,
     pub expiry: Duration,
+    pub size:   usize,
 }
 
 pub struct Pinger {
@@ -35,11 +36,11 @@ impl Pinger {
     }
 
     pub fn ping(&self, ping: &Ping) -> impl Stream<Item = Result<Option<Duration>>> + '_ {
-        let Ping { addr, count, expiry } = *ping;
+        let Ping { addr, count, expiry, size } = *ping;
 
         try_unfold(0, move |seq| async move {
             let ident = random();
-            let probe = Probe::new(addr, ident, seq);
+            let probe = Probe::new(addr, ident, seq, size);
             let rtt   = self.probe(&probe, expiry).await?;
             Ok(Some((rtt, (seq.wrapping_add(1)))))
         }).take(count)

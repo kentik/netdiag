@@ -38,7 +38,7 @@ impl Sock6 {
     }
 
     pub async fn send(&self, probe: &Probe) -> Result<Instant> {
-        let mut pkt = [0u8; 64];
+        let mut pkt = vec![0u8; probe.size];
 
         let pkt  = probe.encode(&mut pkt)?;
         let addr = SocketAddr::new(probe.addr, 0);
@@ -50,7 +50,7 @@ impl Sock6 {
 }
 
 async fn recv(sock: Arc<RawSocket>, state: Arc<State>) -> Result<()> {
-    let mut pkt = [0u8; 64];
+    let mut pkt = [0u8; 1500];  // mtu
     loop {
         let (n, _) = sock.recv_from(&mut pkt).await?;
 
@@ -58,7 +58,7 @@ async fn recv(sock: Arc<RawSocket>, state: Arc<State>) -> Result<()> {
         let pkt = IcmpV6Packet::try_from(&pkt[..n])?;
 
         if let IcmpV6Packet::EchoReply(echo) = pkt {
-            if let Ok(token) = echo.data.try_into() {
+            if let Ok(token) = echo.token.try_into() {
                 if let Some(tx) = state.remove(&token) {
                     let _ = tx.send(now);
                 }
