@@ -48,7 +48,7 @@ impl Tracer {
         let mut probe = source.probe()?;
         let mut done  = false;
 
-        Ok(self.trace(&mut probe, probes, expiry).take_while(|result| {
+        self.trace(&mut probe, probes, expiry).take_while(|result| {
             let last = done;
             if let Ok(nodes) = result {
                 done = nodes.iter().any(|node| {
@@ -59,7 +59,7 @@ impl Tracer {
                 });
             }
             future::ready(!last)
-        }).take(limit).try_collect().await?)
+        }).take(limit).try_collect().await
     }
 
     pub fn trace<'a>(

@@ -40,7 +40,7 @@ impl Sock4 {
     }
 
     pub async fn send(&self, probe: &Probe) -> Result<Instant> {
-        let mut pkt = [0u8; 64];
+        let mut pkt = vec![0u8; probe.size];
 
         let pkt = probe.encode(&mut pkt)?;
         let cksum = checksum(pkt).to_be_bytes();
@@ -55,7 +55,7 @@ impl Sock4 {
 }
 
 async fn recv(sock: Arc<RawSocket>, state: Arc<State>) -> Result<()> {
-    let mut pkt = [0u8; 128];
+    let mut pkt = [0u8; 1500];      // mtu
     loop {
         let (n, _) = sock.recv_from(&mut pkt).await?;
 
@@ -64,7 +64,7 @@ async fn recv(sock: Arc<RawSocket>, state: Arc<State>) -> Result<()> {
 
         if let (Ipv4Header { protocol: ICMP4, .. }, tail) = pkt {
             if let IcmpV4Packet::EchoReply(echo) = IcmpV4Packet::try_from(tail)? {
-                if let Ok(token) = echo.data.try_into() {
+                if let Ok(token) = echo.token.try_into() {
                     if let Some(tx) = state.remove(&token) {
                         let _ = tx.send(now);
                     }

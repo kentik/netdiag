@@ -12,13 +12,14 @@ pub struct Args {
     #[options(default = "4")]   count:  usize,
     #[options(default = "500")] delay:  u64,
     #[options(default = "250")] expiry: u64,
+    #[options(default = "64")]  size:   usize,
     #[options(free, required)]  host:   String,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse_args_default_or_exit();
-    let Args { count, delay, expiry, host, .. } = args;
+    let Args { count, delay, expiry, size, host, .. } = args;
 
     env_logger::init();
 
@@ -33,13 +34,13 @@ async fn main() -> Result<()> {
     println!("pinging {} ({})", host, addr);
 
     let pinger = Pinger::new(&Bind::default()).await?;
-    let ping   = Ping { addr, count, expiry };
+    let ping   = Ping { addr, count, expiry, size };
     let stream = pinger.ping(&ping).enumerate();
     pin_mut!(stream);
 
     while let Some((n, item)) = stream.next().await {
         match item? {
-            Some(d) => println!("seq {} RTT {:0.2?} ", n, d),
+            Some(d) => println!("{} bytes seq {} RTT {:0.2?} ", size, n, d),
             None    => println!("seq {} timeout", n),
         }
         sleep(delay).await;
