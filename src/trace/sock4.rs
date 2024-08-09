@@ -8,6 +8,7 @@ use libc::{IPPROTO_TCP, IPPROTO_UDP, c_int};
 use log::{debug, error};
 use raw_socket::tokio::prelude::*;
 use tokio::sync::Mutex;
+use tokio::task::JoinSet;
 use crate::{Bind, RouteSocket};
 use super::probe::{Key, Probe};
 use super::reply::Echo;
@@ -18,6 +19,7 @@ pub struct Sock4 {
     tcp:   Mutex<Arc<RawSocket>>,
     udp:   Mutex<Arc<RawSocket>>,
     route: Mutex<RouteSocket>,
+    _join_set: JoinSet<()>,
 }
 
 impl Sock4 {
@@ -37,9 +39,10 @@ impl Sock4 {
         tcp.set_sockopt(Level::IPV4, Name::IPV4_HDRINCL, &enable)?;
         udp.set_sockopt(Level::IPV4, Name::IPV4_HDRINCL, &enable)?;
 
-        let rx = tcp.clone();
+        let mut join_set = JoinSet::new();
 
-        tokio::spawn(async move {
+        let rx = tcp.clone();
+        join_set.spawn(async move {
             match recv(rx, state).await {
                 Ok(()) => debug!("recv finished"),
                 Err(e) => error!("recv failed: {}", e),
@@ -51,6 +54,7 @@ impl Sock4 {
             tcp:   Mutex::new(tcp),
             udp:   Mutex::new(udp),
             route: Mutex::new(route),
+            _join_set: join_set,
         })
     }
 
